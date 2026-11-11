@@ -23,11 +23,11 @@ LangCue helps multilingual users notice the selected keyboard language **before*
 
 ## Run
 
-\`\`\`powershell
+```powershell
 git pull
 dotnet restore LangCue.slnx
 dotnet run --project src/LangCue/LangCue.csproj
-\`\`\`
+```
 
 Build a Release executable:
 
