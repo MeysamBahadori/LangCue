@@ -7,7 +7,6 @@ internal sealed class IndicatorForm : Form
 {
     private const int BadgeWidth = 40;
     private const int BadgeHeight = 24;
-    private const int Gap = 8;
 
     private readonly Label _label;
 
@@ -31,7 +30,6 @@ internal sealed class IndicatorForm : Form
             BackColor = Color.Transparent,
             Font = new Font("Segoe UI", 9f, FontStyle.Bold)
         };
-
         Controls.Add(_label);
 
         using var path = new GraphicsPath();
@@ -44,7 +42,6 @@ internal sealed class IndicatorForm : Form
         Region = new Region(path);
     }
 
-    // A click-through window that never becomes the active keyboard target.
     protected override CreateParams CreateParams
     {
         get
@@ -62,7 +59,7 @@ internal sealed class IndicatorForm : Form
 
     protected override bool ShowWithoutActivation => true;
 
-    public void UpdateDisplay(CaretSnapshot snapshot)
+    public void UpdateDisplay(CaretSnapshot snapshot, IndicatorSettings settings)
     {
         if (_label.Text != snapshot.Language)
         {
@@ -72,18 +69,49 @@ internal sealed class IndicatorForm : Form
                 : Color.FromArgb(34, 91, 171);
         }
 
-        Rectangle area = Screen.FromPoint(snapshot.Position).WorkingArea;
-        int x = snapshot.Position.X + Gap;
-        int y = snapshot.Position.Y - 3;
+        Rectangle caret = snapshot.Bounds;
+        bool isRtl = snapshot.Language == "فا";
+        int gap = settings.Gap;
+        int x;
+        int y;
 
-        if (x + Width > area.Right)
+        switch (settings.Position)
         {
-            x = snapshot.Position.X - Width - Gap;
+            case IndicatorPosition.Ahead:
+                x = isRtl ? caret.Left - Width - gap : caret.Right + gap;
+                y = caret.Top + (caret.Height - Height) / 2;
+                break;
+            case IndicatorPosition.Behind:
+                x = isRtl ? caret.Right + gap : caret.Left - Width - gap;
+                y = caret.Top + (caret.Height - Height) / 2;
+                break;
+            case IndicatorPosition.Below:
+                x = caret.Left - Width / 2;
+                y = caret.Bottom + gap;
+                break;
+            default:
+                x = caret.Left - Width / 2;
+                y = caret.Top - Height - gap;
+                break;
         }
 
-        if (y + Height > area.Bottom)
+        Rectangle area = Screen.FromRectangle(caret).WorkingArea;
+
+        // Above/below prefer a non-overlapping side if near a display boundary.
+        if (settings.Position == IndicatorPosition.Above && y < area.Top)
         {
-            y = snapshot.Position.Y - Height - Gap;
+            y = caret.Bottom + gap;
+        }
+        else if (settings.Position == IndicatorPosition.Below && y + Height > area.Bottom)
+        {
+            y = caret.Top - Height - gap;
+        }
+
+        // Side modes switch sides rather than covering the caret when near an edge.
+        if (settings.Position is IndicatorPosition.Ahead or IndicatorPosition.Behind &&
+            (x < area.Left || x + Width > area.Right))
+        {
+            x = x < caret.Left ? caret.Right + gap : caret.Left - Width - gap;
         }
 
         x = Math.Clamp(x, area.Left, Math.Max(area.Left, area.Right - Width));

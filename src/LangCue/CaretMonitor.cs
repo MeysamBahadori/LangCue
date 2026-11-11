@@ -4,15 +4,20 @@ using System.Runtime.InteropServices;
 
 namespace LangCue;
 
-internal readonly record struct CaretSnapshot(Point Position, string Language);
+internal sealed record CaretSnapshot(Rectangle Bounds, string Language);
 
 internal static class CaretMonitor
 {
-    public static bool TryRead(out CaretSnapshot snapshot)
+    // Only inspect foreground focus, keyboard layout, and geometry. Never inspect typed text.
+    public static bool TryReadForeground(
+        out IntPtr foreground,
+        out string language,
+        out Rectangle systemCaret)
     {
-        snapshot = default;
+        foreground = NativeMethods.GetForegroundWindow();
+        language = string.Empty;
+        systemCaret = Rectangle.Empty;
 
-        IntPtr foreground = NativeMethods.GetForegroundWindow();
         if (foreground == IntPtr.Zero)
         {
             return false;
@@ -29,39 +34,25 @@ internal static class CaretMonitor
             Size = (uint)Marshal.SizeOf<NativeMethods.GuiThreadInfo>()
         };
 
-        if (!NativeMethods.GetGUIThreadInfo(threadId, ref info) ||
-            info.FocusWindow == IntPtr.Zero ||
-            info.CaretWindow == IntPtr.Zero ||
-            (info.Flags & NativeMethods.GuiCaretBlinking) == 0 ||
-            info.Caret.Bottom <= info.Caret.Top)
+        bool hasThreadInfo = NativeMethods.GetGUIThreadInfo(threadId, ref info);
+
+        uint layoutThread = threadId;
+        if (hasThreadInfo && info.FocusWindow != IntPtr.Zero)
         {
-            return false;
+            uint focusThread = NativeMethods.GetWindowThreadProcessId(info.FocusWindow, out _);
+            if (focusThread != 0)
+            {
+                layoutThread = focusThread;
+            }
         }
 
-        // GetGUIThreadInfo reports caret coordinates relative to the caret window.
-        var position = new NativeMethods.NativePoint
-        {
-            X = info.Caret.Right,
-            Y = info.Caret.Top
-        };
-
-        if (!NativeMethods.ClientToScreen(info.CaretWindow, ref position))
-        {
-            return false;
-        }
-
-        uint focusThreadId = NativeMethods.GetWindowThreadProcessId(info.FocusWindow, out _);
-        IntPtr layout = NativeMethods.GetKeyboardLayout(
-            focusThreadId != 0 ? focusThreadId : threadId);
-
+        IntPtr layout = NativeMethods.GetKeyboardLayout(layoutThread);
         if (layout == IntPtr.Zero)
         {
             return false;
         }
 
         ushort languageId = (ushort)(layout.ToInt64() & 0xFFFF);
-        string language;
-
         try
         {
             string code = CultureInfo.GetCultureInfo(languageId).TwoLetterISOLanguageName;
@@ -72,7 +63,27 @@ internal static class CaretMonitor
             return false;
         }
 
-        snapshot = new CaretSnapshot(new Point(position.X, position.Y), language);
+        if (!hasThreadInfo ||
+            info.CaretWindow == IntPtr.Zero ||
+            (info.Flags & NativeMethods.GuiCaretBlinking) == 0 ||
+            info.Caret.Bottom <= info.Caret.Top)
+        {
+            return true; // The modern UI Automation path may still find the caret.
+        }
+
+        var point = new NativeMethods.NativePoint
+        {
+            X = info.Caret.Left,
+            Y = info.Caret.Top
+        };
+
+        if (NativeMethods.ClientToScreen(info.CaretWindow, ref point))
+        {
+            int width = Math.Max(2, info.Caret.Right - info.Caret.Left);
+            int height = info.Caret.Bottom - info.Caret.Top;
+            systemCaret = new Rectangle(point.X, point.Y, width, height);
+        }
+
         return true;
     }
 }
