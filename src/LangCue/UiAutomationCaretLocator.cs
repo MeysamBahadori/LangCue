@@ -5,62 +5,68 @@ using Interop.UIAutomationClient;
 namespace LangCue;
 
 /// <summary>
-/// Finds custom carets through UI Automation, without ever reading text content.
-/// Called exclusively on the background MTA monitoring thread.
+/// Caret geometry from a UIA provider must belong to a focused, visible text
+/// control. An ancestor's saved selection is not proof that it still has focus.
+/// All methods run on the MTA caret-monitoring thread.
 /// </summary>
 internal sealed class UiAutomationCaretLocator
 {
     private const int TextPatternId = 10014;
     private const int TextPattern2Id = 10024;
     private const int EditControlTypeId = 50004;
+    private const int ComboBoxControlTypeId = 50003;
 
     private IUIAutomation? _automation;
 
     public bool TryLocate(IntPtr foreground, KeyboardLanguage language, out Rectangle caret)
     {
         caret = Rectangle.Empty;
-
         try
         {
-            _automation ??= CreateAutomation();
-            IUIAutomationElement focused = _automation.GetFocusedElement();
-
-            if (focused is null || focused.CurrentIsOffscreen != 0 ||
-                NativeMethods.GetForegroundWindow() != foreground)
+            if (!TryGetFocus(foreground, out IUIAutomationElement focused) ||
+                !TryGetVisibleClip(focused, out Rectangle clip))
             {
                 return false;
             }
 
-            // Electron / Monaco can put the actual text pattern on a parent
-            // rather than on the initially focused leaf element.
             IUIAutomationElement? element = focused;
-            IUIAutomationTreeWalker walker = _automation.RawViewWalker;
+            IUIAutomationTreeWalker walker = _automation!.RawViewWalker;
 
-            for (int depth = 0; depth < 5 && element is not null; depth++)
+            // TextPattern2.GetCaretRange tells us whether its own caret is
+            // active. TextPattern.GetSelection does NOT, so it is accepted
+            // ONLY on the actual focused element, never on an ancestor.
+            for (int depth = 0; depth < 6 && element is not null; depth++)
             {
-                if (TryGetTextCaret(element, out caret))
+                if (TryGetTextCaret(element, isFocusedElement: depth == 0,
+                        out Rectangle candidate) &&
+                    CaretVisibility.IsWithinElementClip(candidate, clip))
                 {
+                    caret = candidate;
                     return NativeMethods.GetForegroundWindow() == foreground;
                 }
 
                 element = walker.GetParentElement(element);
             }
 
-            // Final approximation ONLY for a focused Edit control. The input
-            // boundary is not an exact caret; never treat a large selection
-            // rectangle as the caret (the old left-edge VS Code bug).
-            if (focused.CurrentControlType == EditControlTypeId &&
-                focused.CurrentHasKeyboardFocus != 0)
+            // Approximate the edge ONLY for an actual, focused Edit control.
+            // Do not borrow a stale selection from a parent editor/document.
+            if (focused.CurrentControlType == EditControlTypeId)
             {
-                var rect = focused.CurrentBoundingRectangle;
-                if (rect.right > rect.left && rect.bottom > rect.top &&
-                    rect.right - rect.left < 3000 &&
-                    rect.bottom - rect.top < 400)
+                var bounds = focused.CurrentBoundingRectangle;
+                int width = bounds.right - bounds.left;
+                int height = bounds.bottom - bounds.top;
+
+                if (width > 12 && width < 3000 && height > 12 && height < 400)
                 {
-                    int x = language.IsRightToLeft ? rect.right - 10 : rect.left + 10;
-                    int y = rect.top + Math.Max(2, (rect.bottom - rect.top - 18) / 2);
-                    caret = new Rectangle(x, y, 2, 18);
-                    return NativeMethods.GetForegroundWindow() == foreground;
+                    int x = language.IsRightToLeft ? bounds.right - 10 : bounds.left + 10;
+                    int y = bounds.top + Math.Max(2, (height - 18) / 2);
+                    Rectangle approximate = new(x, y, 2, 18);
+
+                    if (CaretVisibility.IsWithinElementClip(approximate, clip))
+                    {
+                        caret = approximate;
+                        return NativeMethods.GetForegroundWindow() == foreground;
+                    }
                 }
             }
         }
@@ -80,12 +86,131 @@ internal sealed class UiAutomationCaretLocator
         return false;
     }
 
-    private static bool TryGetTextCaret(IUIAutomationElement element, out Rectangle caret)
+    /// <summary>
+    /// Validate Win32/MSAA candidates against the *current* UIA focus and its
+    /// visible ancestors. A stale MSAA caret must not keep the badge alive
+    /// after the user clicks a toolbar or closes the editor.
+    /// </summary>
+    public bool IsFocusedCaretVisible(IntPtr foreground, Rectangle caret)
+    {
+        try
+        {
+            if (!TryGetFocus(foreground, out IUIAutomationElement focused) ||
+                !LooksLikeTextInput(focused) ||
+                !TryGetVisibleClip(focused, out Rectangle clip))
+            {
+                return false;
+            }
+
+            return CaretVisibility.IsWithinElementClip(caret, clip) &&
+                   NativeMethods.GetForegroundWindow() == foreground;
+        }
+        catch (COMException)
+        {
+            _automation = null;
+            // If a provider has no UIA support at all, the independently
+            // validated Win32/MSAA system caret can still be used.
+            return true;
+        }
+        catch (InvalidCastException)
+        {
+            _automation = null;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            _automation = null;
+            return true;
+        }
+    }
+
+    private bool TryGetFocus(IntPtr foreground, out IUIAutomationElement focused)
+    {
+        _automation ??= CreateAutomation();
+        focused = _automation.GetFocusedElement();
+
+        return focused is not null &&
+               focused.CurrentHasKeyboardFocus != 0 &&
+               focused.CurrentIsOffscreen == 0 &&
+               NativeMethods.GetForegroundWindow() == foreground;
+    }
+
+    private bool TryGetVisibleClip(IUIAutomationElement focused, out Rectangle clip)
+    {
+        clip = Rectangle.Empty;
+        bool foundRectangle = false;
+
+        IUIAutomationElement? current = focused;
+        IUIAutomationTreeWalker walker = _automation!.RawViewWalker;
+
+        // Parent bounding rectangles constrain visible scroll viewports.
+        // Do not let carets outside a scrolled-off textbox survive at the
+        // edge of the browser or desktop.
+        for (int depth = 0; depth < 10 && current is not null; depth++)
+        {
+            if (current.CurrentIsOffscreen != 0)
+            {
+                return false;
+            }
+
+            var bound = current.CurrentBoundingRectangle;
+            if (bound.right > bound.left + 4 && bound.bottom > bound.top + 4 &&
+                bound.left > -100000 && bound.top > -100000 &&
+                bound.right < 100000 && bound.bottom < 100000)
+            {
+                Rectangle rectangle = Rectangle.FromLTRB(
+                    bound.left, bound.top, bound.right, bound.bottom);
+
+                clip = foundRectangle ? Rectangle.Intersect(clip, rectangle) : rectangle;
+                foundRectangle = true;
+
+                if (clip.IsEmpty)
+                {
+                    return false;
+                }
+            }
+
+            current = walker.GetParentElement(current);
+        }
+
+        return foundRectangle && !clip.IsEmpty;
+    }
+
+    private static bool LooksLikeTextInput(IUIAutomationElement focused)
+    {
+        int controlType = focused.CurrentControlType;
+        if (controlType is EditControlTypeId or ComboBoxControlTypeId)
+        {
+            return true;
+        }
+
+        // A text editor/terminal can expose a Document or custom control
+        // rather than Edit. Trust TextPattern2 only when it reports its own
+        // active caret, not an old collapsed selection.
+        if (GetOptionalPattern(focused, TextPattern2Id) is IUIAutomationTextPattern2 text2)
+        {
+            try
+            {
+                text2.GetCaretRange(out int isActive);
+                return isActive != 0;
+            }
+            catch (COMException)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetTextCaret(
+        IUIAutomationElement element,
+        bool isFocusedElement,
+        out Rectangle caret)
     {
         caret = Rectangle.Empty;
 
-        object? pattern = GetOptionalPattern(element, TextPattern2Id);
-        if (pattern is IUIAutomationTextPattern2 text2)
+        if (GetOptionalPattern(element, TextPattern2Id) is IUIAutomationTextPattern2 text2)
         {
             try
             {
@@ -97,12 +222,16 @@ internal sealed class UiAutomationCaretLocator
             }
             catch (COMException)
             {
-                // Not implemented by this accessibility provider.
+                // The provider does not implement the caret geometry.
             }
         }
 
-        pattern = GetOptionalPattern(element, TextPatternId);
-        if (pattern is IUIAutomationTextPattern text)
+        if (!isFocusedElement)
+        {
+            return false;
+        }
+
+        if (GetOptionalPattern(element, TextPatternId) is IUIAutomationTextPattern text)
         {
             try
             {
@@ -113,8 +242,6 @@ internal sealed class UiAutomationCaretLocator
                 }
 
                 IUIAutomationTextRange range = selection.GetElement(0);
-                // A selected word or paragraph is not a caret. It previously
-                // caused indicators to appear at the left edge of chat editors.
                 if (range.CompareEndpoints(
                         TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start,
                         range,
@@ -127,7 +254,7 @@ internal sealed class UiAutomationCaretLocator
             }
             catch (COMException)
             {
-                // Selection geometry is optional; fall back to another provider.
+                return false;
             }
         }
 
@@ -165,8 +292,7 @@ internal sealed class UiAutomationCaretLocator
             return true;
         }
 
-        // Some UIA providers return no bounds for a degenerate range. Only
-        // adjacent character geometry is requested, not the character's text.
+        // Request only adjacent character geometry, never the text itself.
         IUIAutomationTextRange following = range.Clone();
         if (following.MoveEndpointByUnit(
                 TextPatternRangeEndpoint.TextPatternRangeEndpoint_End,
@@ -192,7 +318,6 @@ internal sealed class UiAutomationCaretLocator
     private static bool TryConvertRange(double[]? bounds, bool useRightEdge, out Rectangle caret)
     {
         caret = Rectangle.Empty;
-
         if (bounds is not { Length: 4 })
         {
             return false;
@@ -213,9 +338,7 @@ internal sealed class UiAutomationCaretLocator
 
         caret = new Rectangle(
             (int)Math.Round(useRightEdge ? x + width : x),
-            (int)Math.Round(y),
-            2,
-            (int)Math.Round(height));
+            (int)Math.Round(y), 2, (int)Math.Round(height));
         return true;
     }
 }

@@ -47,6 +47,15 @@ internal sealed class IndicatorForm : Form
 
     public void UpdateDisplay(CaretSnapshot snapshot, IndicatorSettings settings)
     {
+        // Never pin a caret that has scrolled out of the active viewport
+        // to the nearest screen edge. Hide until fresh visible geometry exists.
+        if (!CaretVisibility.IsWithinViewport(
+                NativeMethods.GetForegroundWindow(), snapshot.Bounds))
+        {
+            HideDisplay();
+            return;
+        }
+
         string badge = snapshot.Language.Badge;
         bool isRtl = snapshot.Language.IsRightToLeft;
 
