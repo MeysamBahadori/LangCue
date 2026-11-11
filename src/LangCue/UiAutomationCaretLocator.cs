@@ -1,6 +1,6 @@
 using System.Drawing;
 using System.Runtime.InteropServices;
-using UIAutomationClient;
+using Interop.UIAutomationClient;
 
 namespace LangCue;
 
@@ -78,7 +78,7 @@ internal sealed class UiAutomationCaretLocator
             if (focused.CurrentControlType == EditControlTypeId &&
                 focused.CurrentHasKeyboardFocus != 0)
             {
-                tagRECT rect = focused.CurrentBoundingRectangle;
+                var rect = focused.CurrentBoundingRectangle;
                 if (rect.right > rect.left && rect.bottom > rect.top)
                 {
                     int x = language == "فا" ? rect.right - 10 : rect.left + 10;
