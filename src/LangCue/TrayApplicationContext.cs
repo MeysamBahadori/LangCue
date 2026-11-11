@@ -10,6 +10,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly IndicatorForm _indicator = new();
     private readonly CaretWatcher _watcher = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 80 };
+    private readonly FocusChangeWatcher _focusWatcher;
 
     private IndicatorSettings _settings = SettingsStore.Load();
 
@@ -31,6 +32,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ContextMenuStrip = _menu,
             Visible = true
         };
+
+        // Invalidate immediately on focus/foreground changes rather than
+        // waiting for an accessibility provider to finish its next poll.
+        _focusWatcher = new FocusChangeWatcher(() =>
+        {
+            _watcher.Invalidate();
+            _indicator.HideDisplay();
+        });
 
         _timer.Tick += (sender, args) => UpdateIndicator();
         _timer.Start();
@@ -64,6 +73,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _timer.Stop();
         _timer.Dispose();
+        _focusWatcher.Dispose();
         _watcher.Dispose();
 
         _trayIcon.Visible = false;
