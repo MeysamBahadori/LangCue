@@ -113,4 +113,6 @@ No text is read. The badge is a non-activating, click-through, layered window wi
 
 ## License
 
-A license has not yet been selected. Choose an open-source license before making the repository public.
+LangCue is released under the **MIT License**. You may use, modify, distribute, and contribute to the project under the terms of the license. See the [LICENSE](LICENSE) file for the full text.
+
+Copyright © 2026 Meysam Bahadori.
