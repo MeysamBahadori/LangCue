@@ -1,6 +1,6 @@
-; LangCue 0.2.0-preview.1 - Windows x64 per-user installer
+; LangCue 0.2.0-preview.2 - Windows x64 per-user installer
 #define AppName "LangCue"
-#define AppVersion "0.2.0-preview.1"
+#define AppVersion "0.2.0-preview.2"
 #define PublishDir "..\artifacts\publish\win-x64"
 
 [Setup]

@@ -43,13 +43,13 @@ jobs:
           }
           & $iscc 'installer/LangCue.iss'
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
-          if (-not (Test-Path 'artifacts/installer/LangCue-Setup-0.2.0-preview.1-win-x64.exe')) {
+          if (-not (Test-Path 'artifacts/installer/LangCue-Setup-0.2.0-preview.2-win-x64.exe')) {
             throw 'Expected installer was not generated'
           }
       - uses: actions/upload-artifact@v4
         with:
-          name: LangCue-Setup-0.2.0-preview.1-win-x64
-          path: artifacts/installer/LangCue-Setup-0.2.0-preview.1-win-x64.exe
+          name: LangCue-Setup-0.2.0-preview.2-win-x64
+          path: artifacts/installer/LangCue-Setup-0.2.0-preview.2-win-x64.exe
           if-no-files-found: error
       - name: Create initial GitHub pre-release and attach installer
         env:
@@ -57,8 +57,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
         shell: pwsh
         run: |
-          $tag = 'v0.2.0-preview.1'
-          $installer = 'artifacts/installer/LangCue-Setup-0.2.0-preview.1-win-x64.exe'
+          $tag = 'v0.2.0-preview.2'
+          $installer = 'artifacts/installer/LangCue-Setup-0.2.0-preview.2-win-x64.exe'
           gh release view $tag --repo $env:GH_REPO *> $null
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists; leaving its original artifact unchanged."
@@ -67,7 +67,7 @@ jobs:
           gh release create $tag $installer `
             --repo $env:GH_REPO `
             --target $env:GITHUB_SHA `
-            --title 'LangCue 0.2.0-preview.1' `
+            --title 'LangCue 0.2.0-preview.2' `
             --prerelease `
-            --notes-file 'docs/release-notes-v0.2.0-preview.1.md'
+            --notes-file 'docs/release-notes-v0.2.0-preview.2.md'
           if ($LASTEXITCODE -ne 0) { throw "Could not create GitHub release: $LASTEXITCODE" }
