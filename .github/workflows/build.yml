@@ -2,6 +2,7 @@ name: Build
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -12,5 +13,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore LangCue.slnx
       - name: Build
-        run: dotnet build LangCue.slnx --configuration Release
+        run: dotnet build LangCue.slnx --configuration Release --no-restore

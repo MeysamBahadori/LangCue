@@ -1,82 +1,100 @@
 # LangCue
 
-A lightweight Windows utility that shows the active keyboard language near the text caret.
+**[نسخه فارسی راهنما / Persian README](README.fa.md)**
 
-LangCue helps multilingual users notice the selected keyboard language **before** typing. It does not read typed text, install a keyboard hook, or change the keyboard layout.
+A lightweight Windows utility that shows the active keyboard language near the insertion caret so multilingual users can notice the selected language **before typing**. It never reads, stores, or transmits typed content.
+
+**Version:** `0.2.0-preview.1` — an early pre-release, not 1.0.
 
 ## Features
 
-- **EN** / **فا** indicator near the insertion caret.
-- Four indicator positions: **Above** (default), **Ahead**, **Behind**, or **Below** the caret.
-- Configurable gap of 0–80 pixels; settings survive app restarts.
-- Direction-aware Ahead/Behind positioning (Persian = RTL, other layouts = LTR).
-- Classic Win32 caret support, plus Windows UI Automation fallback for modern controls, including Chromium browsers.
-- Runs in the Windows system tray; right-click for **Settings...** or **Exit LangCue**.
-- Does not steal focus, intercept keystrokes, or inspect typed text.
-- Prevents multiple instances in the same Windows session.
+- **Multiple keyboard languages:** ISO language codes such as EN, DE, FR, AR, HE, UR, RU, ZH, JA, and KO. Persian retains the familiar **فا** label. Unknown custom Windows language IDs are displayed as hexadecimal IDs.
+- **RTL/LTR aware:** Ahead/Behind placement uses the Windows language's right-to-left property (not just Persian).
+- **Position controls:** Above (default), Ahead, Behind or Below the caret; customizable 0–80 pixel gap.
+- **Smoother badge:** Per-pixel-alpha antialiased rounded corners, independently adjustable **background opacity** (40–100%, default 78%); text stays opaque.
+- **Three caret detection paths:** Win32 system caret, MSAA OBJID_CARET, and UI Automation with collapsed-range validation and parent traversal, supporting more Chromium/Electron controls.
+- **Popup handling:** Reasserts topmost Z-order above ordinary menus/dropdowns when Windows permits without stealing keyboard focus.
+- **Custom application/tray icon**, Settings and Exit tray commands, single-instance handling.
+- **Privacy:** No keyboard hook, text capture, telemetry, or background internet requests.
 
-## Requirements
+## Install on Windows
 
-- Windows 10/11
-- .NET 10 SDK (to build and run from source)
-- Internet during first restore to download the single NuGet dependency, \`Interop.UIAutomationClient\`.
+After the release workflow succeeds, get the self-contained Windows 10/11 x64 installer from **[GitHub Releases](https://github.com/MeysamBahadori/LangCue/releases)**.
 
-## Run
+Asset: `LangCue-Setup-0.2.0-preview.1-win-x64.exe`.
+
+Per-user installation requires no administrator rights or separately installed .NET runtime. Start at Windows sign-in is an **optional, initially unchecked** installer task. Uninstall from Windows Settings > Installed Apps.
+
+The pre-release installer is **unsigned**; Windows SmartScreen may warn about an unrecognized publisher.
+
+**Release availability:** A commit is not an installable release. The Windows GitHub Actions job must successfully run to create the release and attach its installer.
+
+## Build and run from source
+
+Requires Windows 10/11, .NET 10 SDK and NuGet access on initial restore.
 
 ```powershell
-git pull
+git clone https://github.com/MeysamBahadori/LangCue.git
+cd LangCue
 dotnet restore LangCue.slnx
-dotnet run --project src/LangCue/LangCue.csproj
+dotnet build LangCue.slnx -c Release
+dotnet run --project src/LangCue
 ```
 
-Build a Release executable:
+To build the installer locally, install Inno Setup 6, then:
 
 ```powershell
-dotnet build LangCue.slnx --configuration Release
+dotnet publish src/LangCue/LangCue.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/publish/win-x64
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\LangCue.iss"
 ```
 
-The executable has no console window. Find the tray icon (possibly under the hidden-icons arrow), right-click it, and open **Settings...** or **Exit LangCue**. Restart the old running instance before trying a new build; only one instance runs at a time.
+Output: `artifacts/installer/LangCue-Setup-0.2.0-preview.1-win-x64.exe`.
 
-### Settings
+## Settings
 
-- **Above caret:** indicator is centered over the insertion point, separated by the configured gap (default: 14px).
-- **Ahead:** right side in LTR, left side in RTL.
-- **Behind:** left side in LTR, right side in RTL.
-- **Below caret:** centered below the insertion point.
-- **Gap:** 0–80 physical pixels between the caret and indicator.
+Right-click LangCue in the system tray, then choose **Settings...**
 
-Settings are stored in \`%LOCALAPPDATA%\LangCue\settings.json\`. Delete this file to restore the defaults.
+| Setting | Description |
+| --- | --- |
+| Above | Default: above caret |
+| Ahead / Behind | Takes keyboard language's RTL/LTR direction into account |
+| Below | Below caret |
+| Gap | 0–80 physical pixels; default 14 |
+| Background opacity | 40–100%; default 78, text stays solid |
 
-## Manual smoke test
+Saved in `%LOCALAPPDATA%\LangCue\settings.json`; previous settings are retained when upgrading.
 
-1. Add both English and Persian keyboards in Windows Settings.
-2. Start LangCue; verify the system tray icon and **Settings...** option.
-3. In Notepad or another standard edit box, move the caret; verify the badge appears **above** it.
-4. Switch layouts with **Win+Space**; verify the badge changes between **EN** and **فا**.
-5. Open Chrome (version 138+ recommended). Click the **address bar** (Ctrl+L), type, and move the caret; verify the badge.
-6. In Chrome, test a search box, a \`textarea\`, and a \`contenteditable\` field, in both LTR and RTL input modes.
-7. Change the position and gap in Settings; verify the indicator moves and settings persist after restart.
-8. Switch to a non-editable area; the badge should disappear. Use **Exit LangCue** to close the app.
+## Manual smoke tests
 
-## How caret detection works
+1. Exit any prior instance using the tray menu, then launch the new executable.
+2. Try Notepad, Chrome's address bar and page text boxes, and a ChatGPT contenteditable field.
+3. Try VS Code Editor, Search, Terminal and Chat and a Claude chat field.
+4. Switch Windows keyboard languages (English, Persian, German, Arabic, etc.) and move the caret.
+5. Adjust position, gap and opacity; restart to test settings persistence.
+6. Try editable dropdowns and menus.
 
-1. \`GetGUIThreadInfo\` retrieves traditional system-caret bounds.
-2. When that fails, a dedicated background MTA thread uses Windows UI Automation \`TextPattern2.GetCaretRange\` to retrieve the focused text control's caret bounds.
-3. If the provider returns an empty caret range, LangCue asks for an adjacent character's **geometry only** (never its contents). If an Edit field has no usable caret geometry, it falls back to the focused field's edge; the badge will be near the field, not necessarily at the exact insertion point.
-4. If focus or geometry cannot be verified, the indicator is hidden instead of guessing.
+## How it works
 
-The UI thread never waits on the accessibility provider, so unresponsive applications cannot freeze the settings window or tray menu.
+A dedicated MTA worker reads the **foreground input layout** from Windows. It requests caret geometry in this order:
 
-## Limitations
+1. `GetGUIThreadInfo` — system caret;
+2. `AccessibleObjectFromWindow(OBJID_CARET)` — Active Accessibility;
+3. UI Automation `TextPattern2.GetCaretRange` and collapsed `TextPattern.GetSelection` on the focused element or its parents;
+4. An **approximate input boundary** only for certain focused Edit controls.
 
-Browser caret support depends on the UI Automation capabilities of the installed browser, version, and focused element. Chrome 138+ enables native UIA by default, but providers can still omit caret geometry for specific controls. Some custom editors, secure desktops, UAC prompts, elevated apps, and games are not supported. Direction for Ahead/Behind is inferred from the selected keyboard language rather than the document's paragraph direction.
+No text is read. The badge is a non-activating, click-through, layered window with per-pixel transparency.
+
+## Known limitations
+
+- Some VS Code/Monaco editors and custom chat widgets do **not** expose exact caret geometry. Display may be approximate or absent; app-specific adapters may be needed later.
+- Some Windows system menus and elevated/secure windows can occlude the overlay; access across UAC secure desktops is not supported.
+- IME submodes such as Japanese Kana/Latin may change without changing the Windows keyboard language. The badge shows the Windows input language, **not** the IME's exact conversion mode or paragraph direction.
+- Behavior depends on each application's accessibility implementation; universal coverage is not guaranteed.
 
 ## Project structure
 
-- \`LangCue.slnx\` — .NET 10 solution
-- \`src/LangCue\` — one WinForms project, including the tray host, Win32/UIA monitor, settings, and overlay
-- \`.github/workflows/build.yml\` — Windows build workflow
+`LangCue.slnx` contains **one** .NET 10 WinForms project in `src/LangCue`. The `assets` folder contains the app icon; `installer` holds the Inno Setup script; `.github/workflows` defines build and release automation.
 
 ## License
 
-A license has not been selected yet; the repository is currently private.
+A license has not yet been selected. Choose an open-source license before making the repository public.

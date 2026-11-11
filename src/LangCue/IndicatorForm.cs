@@ -1,45 +1,31 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 
 namespace LangCue;
 
+/// <summary>
+/// Non-activating, click-through, per-pixel-alpha popup. Antialiased corners
+/// are drawn into a layered window instead of clipping a rectangular Form region.
+/// </summary>
 internal sealed class IndicatorForm : Form
 {
-    private const int BadgeWidth = 40;
-    private const int BadgeHeight = 24;
+    private const int BadgeHeight = 25;
+    private const int HorizontalPadding = 12;
+    private const int MinBadgeWidth = 39;
 
-    private readonly Label _label;
+    private string _badge = string.Empty;
+    private bool _isRtl;
+    private int _backgroundOpacity = -1;
 
     public IndicatorForm()
     {
         AutoScaleMode = AutoScaleMode.None;
-        ClientSize = new Size(BadgeWidth, BadgeHeight);
+        ClientSize = new Size(MinBadgeWidth, BadgeHeight);
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = true;
-        Opacity = 0.92;
-        BackColor = Color.FromArgb(34, 91, 171);
-
-        _label = new Label
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.White,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 9f, FontStyle.Bold)
-        };
-        Controls.Add(_label);
-
-        using var path = new GraphicsPath();
-        const int diameter = 12;
-        path.AddArc(0, 0, diameter, diameter, 180, 90);
-        path.AddArc(BadgeWidth - diameter - 1, 0, diameter, diameter, 270, 90);
-        path.AddArc(BadgeWidth - diameter - 1, BadgeHeight - diameter - 1, diameter, diameter, 0, 90);
-        path.AddArc(0, BadgeHeight - diameter - 1, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        Region = new Region(path);
     }
 
     protected override CreateParams CreateParams
@@ -61,16 +47,26 @@ internal sealed class IndicatorForm : Form
 
     public void UpdateDisplay(CaretSnapshot snapshot, IndicatorSettings settings)
     {
-        if (_label.Text != snapshot.Language)
+        string badge = snapshot.Language.Badge;
+        bool isRtl = snapshot.Language.IsRightToLeft;
+
+        // Three-letter languages and custom Windows layout IDs get more space.
+        int width = Math.Max(MinBadgeWidth, badge.Length * 12 + HorizontalPadding * 2);
+        bool mustRender = _badge != badge ||
+                          _isRtl != isRtl ||
+                          _backgroundOpacity != settings.BackgroundOpacity ||
+                          Width != width || !Visible;
+
+        _badge = badge;
+        _isRtl = isRtl;
+        _backgroundOpacity = settings.BackgroundOpacity;
+
+        if (Width != width)
         {
-            _label.Text = snapshot.Language;
-            BackColor = snapshot.Language == "فا"
-                ? Color.FromArgb(15, 119, 95)
-                : Color.FromArgb(34, 91, 171);
+            Width = width;
         }
 
         Rectangle caret = snapshot.Bounds;
-        bool isRtl = snapshot.Language == "فا";
         int gap = settings.Gap;
         int x;
         int y;
@@ -97,7 +93,6 @@ internal sealed class IndicatorForm : Form
 
         Rectangle area = Screen.FromRectangle(caret).WorkingArea;
 
-        // Above/below prefer a non-overlapping side if near a display boundary.
         if (settings.Position == IndicatorPosition.Above && y < area.Top)
         {
             y = caret.Bottom + gap;
@@ -107,7 +102,6 @@ internal sealed class IndicatorForm : Form
             y = caret.Top - Height - gap;
         }
 
-        // Side modes switch sides rather than covering the caret when near an edge.
         if (settings.Position is IndicatorPosition.Ahead or IndicatorPosition.Behind &&
             (x < area.Left || x + Width > area.Right))
         {
@@ -117,16 +111,128 @@ internal sealed class IndicatorForm : Form
         x = Math.Clamp(x, area.Left, Math.Max(area.Left, area.Right - Width));
         y = Math.Clamp(y, area.Top, Math.Max(area.Top, area.Bottom - Height));
 
-        Point location = new(x, y);
-        if (Location != location)
+        Point nextPosition = new(x, y);
+        if (Location != nextPosition)
         {
-            Location = location;
+            Location = nextPosition;
         }
 
         if (!Visible)
         {
             Show();
         }
+
+        if (mustRender)
+        {
+            Render();
+        }
+
+        // A context menu/dropdown can be created *after* our topmost popup.
+        // Reasserting the topmost Z-order brings the badge above regular menus
+        // without activating it or stealing any input.
+        NativeMethods.SetWindowPos(
+            Handle, NativeMethods.HwndTopmost, 0, 0, 0, 0,
+            NativeMethods.SwpNoSize | NativeMethods.SwpNoMove |
+            NativeMethods.SwpNoActivate | NativeMethods.SwpNoOwnerZOrder);
+    }
+
+    private void Render()
+    {
+        using var bitmap = new Bitmap(Width, Height, PixelFormat.Format32bppPArgb);
+        using (Graphics g = Graphics.FromImage(bitmap))
+        {
+            g.Clear(Color.Transparent);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+
+            using var backgroundPath = RoundedRectangle(new RectangleF(
+                0.6f, 0.6f, Width - 1.2f, Height - 1.2f), 8f);
+
+            Color color = _isRtl ? Color.FromArgb(12, 115, 102) : Color.FromArgb(30, 91, 164);
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(
+                _backgroundOpacity * 255 / 100, color));
+            g.FillPath(backgroundBrush, backgroundPath);
+
+            using var pen = new Pen(Color.FromArgb(65, Color.White), 0.8f);
+            g.DrawPath(pen, backgroundPath);
+
+            using var font = new Font("Segoe UI", 11.5f, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var textBrush = new SolidBrush(Color.White);
+            using var format = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center,
+                FormatFlags = _isRtl ? StringFormatFlags.DirectionRightToLeft : 0
+            };
+            g.DrawString(_badge, font, textBrush, new RectangleF(0, 0, Width, Height), format);
+        }
+
+        IntPtr screenDc = NativeMethods.GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero)
+        {
+            return;
+        }
+
+        IntPtr memoryDc = IntPtr.Zero;
+        IntPtr bitmapHandle = IntPtr.Zero;
+        IntPtr oldHandle = IntPtr.Zero;
+
+        try
+        {
+            memoryDc = NativeMethods.CreateCompatibleDC(screenDc);
+            if (memoryDc == IntPtr.Zero)
+            {
+                return;
+            }
+
+            bitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
+            oldHandle = NativeMethods.SelectObject(memoryDc, bitmapHandle);
+
+            var destination = new NativeMethods.NativePoint { X = Left, Y = Top };
+            var source = new NativeMethods.NativePoint();
+            var size = new NativeMethods.NativeSize { Width = Width, Height = Height };
+            var blend = new NativeMethods.BlendFunction
+            {
+                BlendOp = NativeMethods.AcSrcOver,
+                SourceConstantAlpha = 255,
+                AlphaFormat = NativeMethods.AcSrcAlpha
+            };
+
+            NativeMethods.UpdateLayeredWindow(
+                Handle, screenDc, ref destination, ref size,
+                memoryDc, ref source, 0, ref blend, NativeMethods.UlwAlpha);
+        }
+        finally
+        {
+            if (oldHandle != IntPtr.Zero && memoryDc != IntPtr.Zero)
+            {
+                NativeMethods.SelectObject(memoryDc, oldHandle);
+            }
+            if (bitmapHandle != IntPtr.Zero)
+            {
+                NativeMethods.DeleteObject(bitmapHandle);
+            }
+            if (memoryDc != IntPtr.Zero)
+            {
+                NativeMethods.DeleteDC(memoryDc);
+            }
+            NativeMethods.ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    private static GraphicsPath RoundedRectangle(RectangleF rect, float radius)
+    {
+        float diameter = radius * 2f;
+        var path = new GraphicsPath();
+
+        path.AddArc(rect.Left, rect.Top, diameter, diameter, 180, 90);
+        path.AddArc(rect.Right - diameter, rect.Top, diameter, diameter, 270, 90);
+        path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(rect.Left, rect.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+
+        return path;
     }
 
     public void HideDisplay()

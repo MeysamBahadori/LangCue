@@ -15,6 +15,7 @@ internal sealed record IndicatorSettings
 {
     public IndicatorPosition Position { get; init; } = IndicatorPosition.Above;
     public int Gap { get; init; } = 14;
+    public int BackgroundOpacity { get; init; } = 78;
 }
 
 internal static class SettingsStore
@@ -44,7 +45,8 @@ internal static class SettingsStore
 
             if (settings is not null &&
                 Enum.IsDefined(settings.Position) &&
-                settings.Gap is >= 0 and <= 80)
+                settings.Gap is >= 0 and <= 80 &&
+                settings.BackgroundOpacity is >= 40 and <= 100)
             {
                 return settings;
             }
@@ -52,7 +54,7 @@ internal static class SettingsStore
         catch (Exception exception) when (exception is IOException or
                                          UnauthorizedAccessException or JsonException)
         {
-            // Bad settings should not prevent the utility from starting.
+            // Invalid settings must not prevent the utility from starting.
         }
 
         return new IndicatorSettings();

@@ -6,6 +6,7 @@ internal sealed class SettingsForm : Form
 {
     private readonly ComboBox _positionChoice;
     private readonly NumericUpDown _gapChoice;
+    private readonly NumericUpDown _opacityChoice;
 
     public IndicatorSettings SelectedSettings { get; private set; }
 
@@ -20,7 +21,7 @@ internal sealed class SettingsForm : Form
         ShowInTaskbar = false;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(365, 188);
+        ClientSize = new Size(395, 228);
         AutoScaleMode = AutoScaleMode.Font;
         Font = new Font("Segoe UI", 9f);
 
@@ -29,20 +30,17 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(16),
             ColumnCount = 2,
-            RowCount = 3
+            RowCount = 4
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        for (int row = 0; row < 3; row++)
+        {
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        }
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var positionLabel = new Label
-        {
-            Text = "Position",
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
         _positionChoice = new ComboBox
         {
             Dock = DockStyle.Fill,
@@ -51,25 +49,29 @@ internal sealed class SettingsForm : Form
         _positionChoice.Items.AddRange(
         [
             new PositionOption(IndicatorPosition.Above, "Above caret"),
-            new PositionOption(IndicatorPosition.Ahead, "Ahead of caret (text direction)"),
-            new PositionOption(IndicatorPosition.Behind, "Behind caret (text direction)"),
+            new PositionOption(IndicatorPosition.Ahead, "Ahead (reading direction)"),
+            new PositionOption(IndicatorPosition.Behind, "Behind (reading direction)"),
             new PositionOption(IndicatorPosition.Below, "Below caret")
         ]);
         _positionChoice.SelectedIndex = (int)current.Position;
 
-        var gapLabel = new Label
-        {
-            Text = "Gap (pixels)",
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
         _gapChoice = new NumericUpDown
         {
             Dock = DockStyle.Left,
-            Width = 95,
+            Width = 92,
             Minimum = 0,
             Maximum = 80,
             Value = current.Gap
+        };
+
+        _opacityChoice = new NumericUpDown
+        {
+            Dock = DockStyle.Left,
+            Width = 92,
+            Minimum = 40,
+            Maximum = 100,
+            Increment = 5,
+            Value = current.BackgroundOpacity
         };
 
         var footer = new FlowLayoutPanel
@@ -81,28 +83,35 @@ internal sealed class SettingsForm : Form
 
         var saveButton = new Button { Text = "Save", AutoSize = true };
         saveButton.Click += SaveSettings;
-
         var cancelButton = new Button
         {
             Text = "Cancel",
             AutoSize = true,
             DialogResult = DialogResult.Cancel
         };
-
         AcceptButton = saveButton;
         CancelButton = cancelButton;
 
         footer.Controls.Add(saveButton);
         footer.Controls.Add(cancelButton);
 
-        layout.Controls.Add(positionLabel, 0, 0);
+        layout.Controls.Add(MakeLabel("Position"), 0, 0);
         layout.Controls.Add(_positionChoice, 1, 0);
-        layout.Controls.Add(gapLabel, 0, 1);
+        layout.Controls.Add(MakeLabel("Gap (pixels)"), 0, 1);
         layout.Controls.Add(_gapChoice, 1, 1);
-        layout.Controls.Add(footer, 0, 2);
+        layout.Controls.Add(MakeLabel("Background opacity (%)"), 0, 2);
+        layout.Controls.Add(_opacityChoice, 1, 2);
+        layout.Controls.Add(footer, 0, 3);
         layout.SetColumnSpan(footer, 2);
         Controls.Add(layout);
     }
+
+    private static Label MakeLabel(string text) => new()
+    {
+        Text = text,
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
 
     private void SaveSettings(object? sender, EventArgs e)
     {
@@ -110,7 +119,8 @@ internal sealed class SettingsForm : Form
         var updated = new IndicatorSettings
         {
             Position = position,
-            Gap = (int)_gapChoice.Value
+            Gap = (int)_gapChoice.Value,
+            BackgroundOpacity = (int)_opacityChoice.Value
         };
 
         try

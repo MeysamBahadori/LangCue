@@ -3,8 +3,8 @@ using System.Threading;
 namespace LangCue;
 
 /// <summary>
-/// Runs UIA on a dedicated MTA thread so slow accessibility providers never freeze
-/// the tray menu or Settings window. UI reads only immutable, timestamped snapshots.
+/// Accessibility calls run on a background MTA worker, never on the UI thread.
+/// Snapshots expire quickly so the badge does not linger over other windows.
 /// </summary>
 internal sealed class CaretWatcher : IDisposable
 {
@@ -28,9 +28,8 @@ internal sealed class CaretWatcher : IDisposable
     public CaretSnapshot? GetLatest()
     {
         Observation? observation = Volatile.Read(ref _latest);
-
         if (observation is null ||
-            Environment.TickCount64 - observation.Timestamp > 900)
+            Environment.TickCount64 - observation.Timestamp > 650)
         {
             return null;
         }
@@ -49,21 +48,28 @@ internal sealed class CaretWatcher : IDisposable
             try
             {
                 if (CaretMonitor.TryReadForeground(
-                        out IntPtr foreground, out string language, out var systemCaret))
+                    out IntPtr foreground,
+                    out IntPtr focusWindow,
+                    out KeyboardLanguage language,
+                    out var systemCaret))
                 {
-                    if (systemCaret != System.Drawing.Rectangle.Empty)
+                    if (!systemCaret.IsEmpty)
                     {
                         snapshot = new CaretSnapshot(systemCaret, language);
                     }
-                    else if (automation.TryLocate(foreground, language, out var customCaret))
+                    else if (MsaaCaretLocator.TryLocate(foreground, focusWindow, out var msaaCaret))
                     {
-                        snapshot = new CaretSnapshot(customCaret, language);
+                        snapshot = new CaretSnapshot(msaaCaret, language);
+                    }
+                    else if (automation.TryLocate(foreground, language, out var uiaCaret))
+                    {
+                        snapshot = new CaretSnapshot(uiaCaret, language);
                     }
                 }
             }
             catch (Exception exception)
             {
-                // A faulty accessibility provider must not terminate the tray app.
+                // Broken accessibility providers must not terminate the tray utility.
                 System.Diagnostics.Debug.WriteLine(exception);
             }
 

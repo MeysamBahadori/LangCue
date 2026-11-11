@@ -5,6 +5,7 @@ namespace LangCue;
 internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly ContextMenuStrip _menu;
+    private readonly Icon _appIcon;
     private readonly NotifyIcon _trayIcon;
     private readonly IndicatorForm _indicator = new();
     private readonly CaretWatcher _watcher = new();
@@ -19,10 +20,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("Exit LangCue", null, (sender, args) => ExitThread());
 
+        // The custom multi-resolution icon is embedded in the EXE at build time.
+        _appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath)
+            ?? (Icon)SystemIcons.Application.Clone();
+
         _trayIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
-            Text = "LangCue",
+            Icon = _appIcon,
+            Text = "LangCue 0.2.0-preview.1",
             ContextMenuStrip = _menu,
             Visible = true
         };
@@ -59,11 +64,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _timer.Stop();
         _timer.Dispose();
-
         _watcher.Dispose();
 
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
+        _appIcon.Dispose();
         _menu.Dispose();
 
         _indicator.Close();
