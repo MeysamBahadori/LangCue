@@ -31,9 +31,9 @@ dotnet run --project src/LangCue/LangCue.csproj
 
 Build a Release executable:
 
-\`\`\`powershell
+```powershell
 dotnet build LangCue.slnx --configuration Release
-\`\`\`
+```
 
 The executable has no console window. Find the tray icon (possibly under the hidden-icons arrow), right-click it, and open **Settings...** or **Exit LangCue**. Restart the old running instance before trying a new build; only one instance runs at a time.
 
