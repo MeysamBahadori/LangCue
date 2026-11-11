@@ -38,9 +38,15 @@ internal sealed class UiAutomationCaretLocator
             for (int depth = 0; depth < 6 && element is not null; depth++)
             {
                 if (TryGetTextCaret(element, isFocusedElement: depth == 0,
-                        out Rectangle candidate) &&
-                    CaretVisibility.IsWithinElementClip(candidate, clip))
+                        out Rectangle candidate))
                 {
+                    // A real caret that is outside the visible viewport must
+                    // never be replaced by a made-up field-edge location.
+                    if (!CaretVisibility.IsWithinElementClip(candidate, clip))
+                    {
+                        return false;
+                    }
+
                     caret = candidate;
                     return NativeMethods.GetForegroundWindow() == foreground;
                 }
@@ -56,7 +62,15 @@ internal sealed class UiAutomationCaretLocator
                 int width = bounds.right - bounds.left;
                 int height = bounds.bottom - bounds.top;
 
-                if (width > 12 && width < 3000 && height > 12 && height < 400)
+                // Do not guess a field edge if part of the text field itself
+                // is currently scrolled out of the visible ancestor viewport.
+                bool fullyVisible = bounds.left >= clip.Left - 2 &&
+                                    bounds.top >= clip.Top - 2 &&
+                                    bounds.right <= clip.Right + 2 &&
+                                    bounds.bottom <= clip.Bottom + 2;
+
+                if (fullyVisible && width > 12 && width < 3000 &&
+                    height > 12 && height < 400)
                 {
                     int x = language.IsRightToLeft ? bounds.right - 10 : bounds.left + 10;
                     int y = bounds.top + Math.Max(2, (height - 18) / 2);
@@ -226,7 +240,11 @@ internal sealed class UiAutomationCaretLocator
             }
         }
 
-        if (!isFocusedElement)
+        // A read-only Document may keep a collapsed selection after the
+        // editor closes. Selection is not a caret unless the focused leaf
+        // is an actual editable control.
+        if (!isFocusedElement ||
+            element.CurrentControlType is not (EditControlTypeId or ComboBoxControlTypeId))
         {
             return false;
         }
