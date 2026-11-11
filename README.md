@@ -50,6 +50,22 @@ dotnet publish src/LangCue/LangCue.csproj -c Release -r win-x64 --self-contained
 
 Output: `artifacts/installer/LangCue-Setup-0.2.0-preview.1-win-x64.exe`.
 
+## One-command installer and manual-release fallback
+
+If Actions cannot start a Windows job, build the installer yourself using the included PowerShell script (requires **.NET 10 SDK + Inno Setup 6**):
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\Build-Installer.ps1
+```
+
+After verifying the installer, you can publish the first pre-release from your own Windows machine using **GitHub CLI**, authenticated with `gh auth login`:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\Build-Installer.ps1 -Publish
+```
+
+The publishing option creates the GitHub Release and uploads the setup file; it will refuse to overwrite an existing release.
+
 ## Settings
 
 Right-click LangCue in the system tray, then choose **Settings...**

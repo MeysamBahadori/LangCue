@@ -50,6 +50,22 @@ dotnet publish src/LangCue/LangCue.csproj -c Release -r win-x64 --self-contained
 
 فایل نصب در مسیر `artifacts/installer` ساخته می‌شود.
 
+## ساخت سریع Installer و انتشار دستی
+
+اگر GitHub Actions پیش از اجرای Windows Job متوقف شد، پس از نصب **.NET 10 SDK** و **Inno Setup 6** می‌توانید بسته نصب را روی ویندوز خودتان با یک دستور بسازید:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\Build-Installer.ps1
+```
+
+پس از آزمایش فایل نصب، برای ساخت اولین Release و ارسال فایل نصب به GitHub، ابزار **GitHub CLI** را نصب کرده و با `gh auth login` وارد حساب شوید؛ سپس:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\Build-Installer.ps1 -Publish
+```
+
+این دستور اگر Release از قبل وجود داشته باشد، بدون جایگزینی فایل‌های آن متوقف می‌شود.
+
 ## تنظیمات
 
 روی آیکون LangCue در System Tray راست‌کلیک کنید و گزینه **Settings...** را انتخاب کنید.
