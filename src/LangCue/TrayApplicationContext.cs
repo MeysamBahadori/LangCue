@@ -28,7 +28,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _trayIcon = new NotifyIcon
         {
             Icon = _appIcon,
-            Text = "LangCue 0.2.0-preview.1",
+            Text = "LangCue 0.2.0-preview.2",
             ContextMenuStrip = _menu,
             Visible = true
         };

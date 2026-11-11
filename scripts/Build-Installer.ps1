@@ -2,7 +2,7 @@ param([switch]$Publish)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$version = '0.2.0-preview.1'
+$version = '0.2.0-preview.2'
 $tag = "v$version"
 $repo = 'MeysamBahadori/LangCue'
 $installer = Join-Path $root "artifacts\installer\LangCue-Setup-$version-win-x64.exe"
@@ -49,7 +49,7 @@ try {
             --target main `
             --title "LangCue $version" `
             --prerelease `
-            --notes-file 'docs\release-notes-v0.2.0-preview.1.md'
+            --notes-file 'docs\release-notes-v0.2.0-preview.2.md'
         if ($LASTEXITCODE -ne 0) { throw 'GitHub Release creation failed.' }
         Write-Host "Release published: https://github.com/$repo/releases/tag/$tag" -ForegroundColor Green
     }

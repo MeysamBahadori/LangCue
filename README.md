@@ -4,7 +4,7 @@
 
 A lightweight Windows utility that shows the active keyboard language near the insertion caret so multilingual users can notice the selected language **before typing**. It never reads, stores, or transmits typed content.
 
-**Version:** `0.2.0-preview.1` — an early pre-release, not 1.0.
+**Version:** `0.2.0-preview.2` — an early pre-release, not 1.0.
 
 ## Features
 
@@ -21,7 +21,7 @@ A lightweight Windows utility that shows the active keyboard language near the i
 
 After the release workflow succeeds, get the self-contained Windows 10/11 x64 installer from **[GitHub Releases](https://github.com/MeysamBahadori/LangCue/releases)**.
 
-Asset: `LangCue-Setup-0.2.0-preview.1-win-x64.exe`.
+Asset: `LangCue-Setup-0.2.0-preview.2-win-x64.exe`.
 
 Per-user installation requires no administrator rights or separately installed .NET runtime. Start at Windows sign-in is an **optional, initially unchecked** installer task. Uninstall from Windows Settings > Installed Apps.
 
@@ -48,7 +48,7 @@ dotnet publish src/LangCue/LangCue.csproj -c Release -r win-x64 --self-contained
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\LangCue.iss"
 ```
 
-Output: `artifacts/installer/LangCue-Setup-0.2.0-preview.1-win-x64.exe`.
+Output: `artifacts/installer/LangCue-Setup-0.2.0-preview.2-win-x64.exe`.
 
 ## One-command installer and manual-release fallback
 
