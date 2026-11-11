@@ -10,8 +10,13 @@ $installer = Join-Path $root "artifacts\installer\LangCue-Setup-$version-win-x64
 Push-Location $root
 try {
     if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'Install the .NET 10 SDK first.' }
-    $iscc = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'
-    if (-not (Test-Path $iscc)) { throw "Install Inno Setup 6. Missing: $iscc" }
+    # Inno Setup can be installed per user (winget default) or for all users.
+    $isccCandidates = @(
+        (Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6\ISCC.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
+    )
+    $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $iscc) { throw 'Inno Setup 6 compiler (ISCC.exe) not found. Install Inno Setup 6 and retry.' }
 
     & dotnet restore LangCue.slnx
     if ($LASTEXITCODE -ne 0) { throw 'Restore failed.' }
